@@ -23,8 +23,8 @@ int main(int argc, char **argv) {
   void *cp; cudaMalloc(&cp, (size_t)M * K);
   const BenchRow copy = bench.run([&] { cudaMemcpyAsync(cp, dA, (size_t)M * K, cudaMemcpyDeviceToDevice); }, 200);
   const double copy_bw = 2.0 * M * K / copy.ms / 1e6;
-  printf("%s: M=%d K=%d, A = %.0f MB E4M3; DRAM peak %.0f GB/s, D2D copy %.0f GB/s (read+write)\n\n",
-         p.name, M, K, (double)M * K / 1e6, peak_bw, copy_bw);
+  printf("%s: M=%d K=%d, A = %.0f MB E4M3; DRAM peak %.0f GB/s (%d-bit bus), D2D copy %.0f GB/s (read+write)\n\n",
+         p.name, M, K, (double)M * K / 1e6, peak_bw, p.memoryBusWidth, copy_bw);
   printf("%-36s %9s %12s %8s %8s %9s\n", "", "time", "A bytes/s", "of DRAM", "of copy", "SM clock");
   auto row = [&](const char *name, BenchRow x, double bytes, const char *note) {
     const double gbs = bytes / x.ms / 1e6;

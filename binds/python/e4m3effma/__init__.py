@@ -135,20 +135,43 @@ def _scaled_mm(self, mat2, scale_a, scale_b, bias=None, scale_result=None, out_d
                  None if scale_result is None else scale_result.reshape(1).float(), None)
 
 
+# One aten::_scaled_mm override shared by the *EffMA packages (E4M3EffMA, E5M2EffMA): the first one
+# imported registers a dispatcher, every package appends its handler.  A handler raises
+# NotImplementedError for calls it does not cover; the next one is tried, and the last error is raised
+# when none applies.  Keep this protocol identical in all packages.
+_SHARED = "_effma_scaled_mm"
+
+
 def _register_torch_ops():
     if os.environ.get("E4M3EFFMA_NO_TORCH_OPS") == "1" or not torch.cuda.is_available():
         return None
     caps = [10 * a + b for a, b in (torch.cuda.get_device_capability(i) for i in range(torch.cuda.device_count()))]
     if not caps or any(cc < 50 or cc >= 89 for cc in caps):
         return None  # a GPU with native FP8 (or an unsupported one) is present: keep PyTorch's own kernel
-    lib = torch.library.Library("aten", "IMPL")
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")  # "overriding a previously registered kernel"
-        lib.impl("_scaled_mm", _scaled_mm, "CUDA")
-    return lib
+    shared = getattr(torch, _SHARED, None)
+    if shared is None:
+        handlers = []
+
+        def dispatch(*args, **kwargs):
+            err = None
+            for h in handlers:
+                try:
+                    return h(*args, **kwargs)
+                except NotImplementedError as e:
+                    err = e
+            raise err
+
+        lib = torch.library.Library("aten", "IMPL")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # "overriding a previously registered kernel"
+            lib.impl("_scaled_mm", dispatch, "CUDA")
+        shared = {"lib": lib, "handlers": handlers}  # the registration lives as long as lib
+        setattr(torch, _SHARED, shared)
+    shared["handlers"].append(_scaled_mm)
+    return shared
 
 
-_torch_ops = _register_torch_ops()  # the registration lives as long as this object
+_torch_ops = _register_torch_ops()
 
 
 def torch_ops_enabled() -> bool:

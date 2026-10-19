@@ -36,8 +36,8 @@ def gemm_rows(path):
 def gemv_rows(path):
     rows, head = {}, {}
     for line in open(path):
-        h = re.search(r'DRAM peak ([\d.]+) GB/s, D2D copy ([\d.]+) GB/s', line)
-        if h: head = dict(dram=float(h.group(1)), copy=float(h.group(2)))
+        h = re.search(r'DRAM peak ([\d.]+) GB/s(?: \((\d+)-bit bus\))?, D2D copy ([\d.]+) GB/s', line)
+        if h: head = dict(dram=float(h.group(1)), bus=h.group(2), copy=float(h.group(3)))
         m = ROW.match(line.rstrip())
         if not m: continue
         p = re.findall(r'([\d.]+)%', m.group('rest')); mhz = re.search(r'([\d.]+) MHz', m.group('rest'))
@@ -93,6 +93,11 @@ def main(res, out_dir):
     a = adam_rows(os.path.join(res, 'bench_adamw.txt'))
     cl = {b: clocks(os.path.join(res, f'clocks_bench_{b}.csv')) for b in ('gemm', 'gemv', 'adamw')}
     cub = g.get('cuBLAS SGEMM FP32 -> FP32, TN') or g.get('cuBLAS SGEMM TN FP32 -> FP32')
+    # SM count and bus width come from cudaDeviceProp via the benchmark headers (nvidia-smi -q no
+    # longer reports them on recent drivers)
+    sms = re.search(r', (\d+) SMs;', open(os.path.join(res, 'bench_gemm.txt')).read())
+    if sms and not env.get('sms'): env['sms'] = sms.group(1)
+    if vh.get('bus') and 'bus' not in env.get('memory', ''): env['memory'] = f"{env.get('memory', '?')}, {vh['bus']}-bit bus"
     L = [f"# {gpu}", '',
          f"Results of `bench/run_bench.sh`. Methodology and how to read them: [docs/performance.md](../docs/performance.md).", '',
          '| | |', '|---|---|']

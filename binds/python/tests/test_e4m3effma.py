@@ -367,6 +367,32 @@ def test_torch_scaled_mm_rejects_unsupported():
         torch._scaled_mm(a.to(torch.float8_e5m2), b, one, one, out_dtype=torch.bfloat16)
 
 
+@needs_torch_ops
+def test_torch_scaled_mm_shared_dispatch():
+    """One aten override for every *EffMA package: a handler added by another package (here a stand-in
+    that only takes float16 operands) is tried after this one, and this one stays in place."""
+    shared = torch._effma_scaled_mm
+    assert fx._scaled_mm in shared["handlers"]
+
+    def other(self, mat2, *args, **kwargs):
+        if self.dtype != torch.float16:
+            raise NotImplementedError("other: float16 only")
+        return torch.full((self.shape[0], mat2.shape[1]), 7.0, device=self.device)
+
+    shared["handlers"].append(other)
+    try:
+        one = torch.tensor(1.0, device=DEV)
+        h = torch.zeros(16, 16, device=DEV, dtype=torch.float16)
+        assert float(torch._scaled_mm(h, h.t(), one, one)[0, 0]) == 7.0
+        a, b = rand((16, 32), F8, seed=1), rand((16, 32), F8, seed=2).t()
+        assert torch.equal(torch._scaled_mm(a, b, one, one, out_dtype=torch.float32),
+                           fx.matmul(a, b, out_dtype=torch.float32))
+        with pytest.raises(NotImplementedError, match="float16 only"):  # nobody takes it: the last error
+            torch._scaled_mm(h.bfloat16(), h.bfloat16().t(), one, one)
+    finally:
+        shared["handlers"].remove(other)
+
+
 def test_torch_ops_can_be_disabled():
     import subprocess, sys
     code = ("import torch, e4m3effma as fx; assert not fx.torch_ops_enabled(); assert torch.e4m3effma is torch.float8_e4m3fn")

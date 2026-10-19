@@ -6,6 +6,6 @@ authors:
   - name: "srose69"
 repository-code: "https://github.com/srose69/e4m3effma"
 license: AGPL-3.0-only
-version: "0.1.0"
+version: "0.1.1"
 date-released: "2026-10-20"
 keywords: [fp8, e4m3, cuda, gemm, gemv, adamw, pascal, pytorch]
