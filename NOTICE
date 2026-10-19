@@ -1,0 +1,23 @@
+E4M3EffMA
+Copyright (C) 2026 srose69
+Home page: https://github.com/srose69/e4m3effma
+
+E4M3EffMA is free software: you can redistribute it and/or modify it under the terms of the GNU
+Affero General Public License, version 3 (LICENSE), together with the Linking and Attribution
+Exception (LICENSE-EXCEPTION). It is distributed WITHOUT ANY WARRANTY; see the AGPL for details.
+
+In short:
+  - Programs that use E4M3EffMA (link it, call it, load its Python bindings) may be distributed or
+    run as a service under any license, including proprietary ones.
+  - Changes to E4M3EffMA itself stay under the AGPL with the exception, with their source available,
+    and must be marked as modified.
+  - Every work that uses E4M3EffMA must show the attribution below (LICENSE-EXCEPTION, section 2).
+
+Attribution
+-----------
+Short form:  E4M3EffMA (https://github.com/srose69/e4m3effma)
+Long form:   This product uses E4M3EffMA, FP8 (E4M3) GEMM, GEMV and optimizer kernels for GPUs
+             without native FP8 (https://github.com/srose69/e4m3effma), Copyright (C) 2026 srose69.
+
+A request, not a condition: if you train or fine-tune a model with E4M3EffMA, a mention in the model
+card or paper ("trained with E4M3EffMA") is much appreciated. CITATION.cff has the citation.
