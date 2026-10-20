@@ -9,7 +9,9 @@
 int main() {
   const size_t N = 64u << 20;
   cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
-  const double peak_bw = 2.0 * prop.memoryClockRate * 1e3 * (prop.memoryBusWidth / 8) / 1e9;
+  int memory_clock_khz = 0;
+  cudaDeviceGetAttribute(&memory_clock_khz, cudaDevAttrMemoryClockRate, 0);
+  const double peak_bw = 2.0 * memory_clock_khz * 1e3 * (prop.memoryBusWidth / 8) / 1e9;
   Bench bench;
   void *p, *g, *m, *v, *q;
   cudaMalloc(&p, N * 4); cudaMalloc(&g, N * 4); cudaMalloc(&m, N * 4); cudaMalloc(&v, N * 4); cudaMalloc(&q, N);
