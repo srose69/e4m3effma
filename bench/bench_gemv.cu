@@ -12,7 +12,9 @@
 int main(int argc, char **argv) {
   const int M = argc > 1 ? atoi(argv[1]) : 8192, K = argc > 2 ? atoi(argv[2]) : 8192;
   cudaDeviceProp p; cudaGetDeviceProperties(&p, 0);
-  const double peak_bw = 2.0 * p.memoryClockRate * 1e3 * (p.memoryBusWidth / 8) / 1e9;
+  int memory_clock_khz = 0;
+  cudaDeviceGetAttribute(&memory_clock_khz, cudaDevAttrMemoryClockRate, 0);
+  const double peak_bw = 2.0 * memory_clock_khz * 1e3 * (p.memoryBusWidth / 8) / 1e9;
   Bench bench;
   void *dA, *dX, *dY; cudaMalloc(&dA, (size_t)M * K); cudaMalloc(&dX, (size_t)K * 8 * 4); cudaMalloc(&dY, (size_t)M * 8 * 4);
   std::vector<unsigned char> h((size_t)M * K);
