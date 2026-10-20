@@ -70,21 +70,28 @@ Kernels are templates over a few parameters; the candidates are those that can w
   that would break the 16-byte alignment of the `LDS.128` fragment reads. Rows past the end of the
   matrix read row 0: they only feed outputs that are never stored, so the loader has no branches.
 - **Epilogue.** For the common BF16 output without bias or C, each thread writes its 4 consecutive rows
-  of a column as one 8-byte store. Every other combination goes through one non-inlined store function
-  per element; inlining every dtype branch into each of the 64 outputs per thread made the kernels ~20×
-  larger (and the build as much slower). The GEMV kernel hands each output to a different lane after
-  the butterfly, so stores run in parallel and its epilogue is inlined once.
+  of a column as one 8-byte store. Every other combination (FP32 / FP16 / FP8 output, bias, C,
+  accumulation) is staged through shared memory one column of the thread tile at a time: the block
+  writes BM × TY accumulators into the free A tile, then every thread runs the generic epilogue on 8
+  of them, consecutive threads on consecutive rows. The epilogue is inlined once, in a loop over the
+  column passes: inlining it into each of the 64 outputs per thread made the kernels ~20× larger,
+  and calling it out of line put a call frame on the stack. The stores now coalesce along m, which
+  made TE-style FP32 accumulation 6–7 % faster than per-output calls. The GEMV kernel hands each
+  output to a different lane after the butterfly, so stores run in parallel and its epilogue is
+  inlined once.
 
 - **Raw FP8 prefetch.** The next tile's global loads are issued right after the current tile is in
   shared memory and are decoded only after it has been computed. E4M3 data stays raw meanwhile, so this
   costs 4 registers per thread (8 bytes of A and 8 of B), and the global latency hides behind the block's
   own FFMAs instead of only behind other blocks (+2–4 %).
 - **Occupancy.** 256 threads × ~120 registers = 2 blocks (16 warps) per SM, the same as cuBLAS SGEMM on
-  this GPU. A third block needs ≤ 80 registers per thread, but an 8 × 8 thread tile alone holds 64
-  accumulators: under that cap (or 96 registers with 128-thread blocks, 20 warps) ptxas spills and leaves
-  30–45 % of the FFMAs bank-conflicting, and the kernel runs at 75 % of cuBLAS. An 8 × 4 thread tile
-  (128 × 64 block) does reach 3 blocks without spills, but doubles decode, LDS and address work per FFMA
-  and runs at 80 %. Two blocks of 8 × 8 tiles stay the best configuration on Pascal.
+  this GPU. The 64 × 64 configuration (64 threads, for grids too small to fill the GPU with large tiles)
+  targets 6 blocks per SM: at 8 its doubled loader state spilled. A third block needs ≤ 80 registers per
+  thread, but an 8 × 8 thread tile alone holds 64 accumulators: under that cap (or 96 registers with
+  128-thread blocks, 20 warps) ptxas spills and leaves 30–45 % of the FFMAs bank-conflicting, and the
+  kernel runs at 75 % of cuBLAS. An 8 × 4 thread tile (128 × 64 block) does reach 3 blocks without
+  spills, but doubles decode, LDS and address work per FFMA and runs at 80 %. Two blocks of 8 × 8 tiles
+  stay the best configuration on Pascal.
 
 These changes took the library GEMM from 82–85 % to 94–100 % of cuBLAS SGEMM on the GTX 1080
 (interleaved A/B runs in one process): coalesced output and the packed BF16 store ≈ 9 %, the

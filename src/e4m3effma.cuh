@@ -185,17 +185,9 @@ __device__ __forceinline__ float epi_apply(const Epilogue &e, float s, float qsc
   store_any(e.d_dtype, e.d, (size_t)j * e.ldd + i, v, qscale);
   return fabsf(v);
 }
-static __device__ __noinline__ float epi_call(const Epilogue &e, float s, float qscale, float csinv, int i, int j,
-                                              float acc) {
-  return epi_apply(e, s, qscale, csinv, i, j, acc);
-}
-// GEMM stores up to 64 outputs per thread: a call each.  Inlining every dtype branch into each of them
-// made the kernels ~20x larger and the build as much slower, with no measurable speed difference.
+// One output through the epilogue, max-reducing |value| into the amax statistic (GEMM: one call site in
+// a loop over a staged column; GEMV: one or two call sites).
 __device__ __forceinline__ void epi_store(const Epilogue &e, EpiState &st, int i, int j, float acc) {
-  st.amax = fmaxf(st.amax, epi_call(e, st.s, st.qscale, st.csinv, i, j, acc));
-}
-// Inlined variant for kernels with one or two store sites (GEMV).
-__device__ __forceinline__ void epi_store_inline(const Epilogue &e, EpiState &st, int i, int j, float acc) {
   st.amax = fmaxf(st.amax, epi_apply(e, st.s, st.qscale, st.csinv, i, j, acc));
 }
 __device__ __forceinline__ void epi_end(const Epilogue &e, EpiState &st) {

@@ -73,7 +73,7 @@ gemv_kernel(const uint8_t *__restrict__ A, int lda, const uint8_t *__restrict__ 
 #pragma unroll
   for (int t = 0; t < PER; ++t) {
     const int o = t * 32 + lane, r = o / NB;
-    if (o < NO && row0 + r < m) epi_store_inline(e, st, row0 + r, o - r * NB, mine[t]);
+    if (o < NO && row0 + r < m) epi_store(e, st, row0 + r, o - r * NB, mine[t]);
   }
   epi_end(e, st);
 }

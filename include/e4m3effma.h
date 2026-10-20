@@ -38,7 +38,7 @@
 #ifndef E4M3EFFMA_H
 #define E4M3EFFMA_H
 
-#define E4M3EFFMA_VERSION "0.1.1"
+#define E4M3EFFMA_VERSION "0.1.2"
 
 #include <stddef.h>
 #include <cuda_runtime.h>

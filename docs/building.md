@@ -37,7 +37,7 @@ their architectures in parallel (`nvcc --threads`).
 Kernel instances are split into small objects of similar cost (GEMM: configuration × A dtype × B dtype;
 GEMV: configuration × x dtype), and each architecture's SASS contains kernel bodies only for the
 configurations its table selects (trapping stubs elsewhere). On a 20-thread CPU the library for all 12
-architectures builds in about 25 s, one architecture in a few seconds.
+architectures builds in about 75 s, one architecture in about 10 s.
 
 ## Installing for C / C++
 

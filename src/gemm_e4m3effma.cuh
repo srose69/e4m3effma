@@ -21,7 +21,9 @@ template <int BM_, int BN_, int BK_, int TM_, int TN_>
 struct GemmCfg {
   static constexpr int BM = BM_, BN = BN_, BK = BK_, TM = TM_, TN = TN_;
   static constexpr int TX = BM / TM, TY = BN / TN, NT = TX * TY, PAD = 4;  // lanes run along m
-  static constexpr int MINB = NT >= 512 ? 1 : 512 / NT;  // resident blocks the register budget targets
+  // resident blocks the register budget targets: 2 x 256 threads (<= 128 registers); 64-thread blocks
+  // (small problems, few blocks anyway) get 6 x 64, as 8 x 64 would make them spill
+  static constexpr int MINB = NT >= 512 ? 1 : NT >= 256 ? 512 / NT : 6;
   template <int TA, int TB> struct On { static constexpr bool value = true; };
 };
 
@@ -171,31 +173,59 @@ gemm_kernel(const uint8_t *__restrict__ A, int lda, const uint8_t *__restrict__ 
 
   EpiState st = epi_begin(e);
   // Common case -- BF16 out, no bias, no C, D 8-byte aligned -- the 4 consecutive rows a thread owns
-  // in each column go out as one 8-byte store; everything else through epi_store.
+  // in each column go out as one 8-byte store.
   const bool packed = e.d_dtype == EFFMA_BF16 && !e.bias && e.beta == 0.f &&
                       (((uintptr_t)e.d | (uintptr_t)e.ldd * 2) & 7) == 0;
+  if (packed) {
 #pragma unroll
-  for (int g = 0; g < C::TM / 4; ++g) {
-    const int gi = m0 + g * C::TX * 4 + tx * 4;
+    for (int g = 0; g < C::TM / 4; ++g) {
+      const int gi = m0 + g * C::TX * 4 + tx * 4;
 #pragma unroll
-    for (int j = 0; j < C::TN; ++j) {
-      const int gj = n0 + (j / 4) * C::TY * 4 + ty * 4 + (j & 3);
-      if (gj >= n) continue;
-      if (packed && gi + 3 < m) {
+      for (int j = 0; j < C::TN; ++j) {
+        const int gj = n0 + (j / 4) * C::TY * 4 + ty * 4 + (j & 3);
+        if (gj >= n) continue;
         float v[4];
 #pragma unroll
         for (int i = 0; i < 4; ++i) {
           v[i] = __fmul_rn(acc[4 * g + i][j], epi_scale(e, st.s, gi + i, gj));
-          st.amax = fmaxf(st.amax, fabsf(v[i]));
+          if (gi + i < m) st.amax = fmaxf(st.amax, fabsf(v[i]));  // rows past m are not outputs
         }
-        uint2 w;
-        w.x = __byte_perm(rne_hi(__float_as_uint(v[0])), rne_hi(__float_as_uint(v[1])), 0x7632);
-        w.y = __byte_perm(rne_hi(__float_as_uint(v[2])), rne_hi(__float_as_uint(v[3])), 0x7632);
-        *reinterpret_cast<uint2 *>((uint16_t *)e.d + (size_t)gj * e.ldd + gi) = w;
-      } else {
+        uint16_t *d = (uint16_t *)e.d + (size_t)gj * e.ldd + gi;
+        if (gi + 3 < m) {
+          uint2 w;
+          w.x = __byte_perm(rne_hi(__float_as_uint(v[0])), rne_hi(__float_as_uint(v[1])), 0x7632);
+          w.y = __byte_perm(rne_hi(__float_as_uint(v[2])), rne_hi(__float_as_uint(v[3])), 0x7632);
+          *reinterpret_cast<uint2 *>(d) = w;
+        } else {
 #pragma unroll
-        for (int i = 0; i < 4; ++i)
-          if (gi + i < m) epi_store(e, st, gi + i, gj, acc[4 * g + i][j]);
+          for (int i = 0; i < 4; ++i)
+            if (gi + i < m) d[i] = (uint16_t)(rne_hi(__float_as_uint(v[i])) >> 16);
+        }
+      }
+    }
+  } else {
+    // Everything else (any output dtype, bias, C, FP8 output) goes column by column through shared
+    // memory: pass j stages column j of every thread's tile -- BM rows x TY columns -- in sA, then
+    // each thread stores TM elements, consecutive threads on consecutive rows.  One inlined epilogue
+    // in a loop instead of a call per output: no call frame, no stack, and the stores coalesce along m.
+    static_assert(C::TY <= C::BK && C::BM % 4 == 0, "a staged column must fit in sA");
+#pragma unroll 1
+    for (int j = 0; j < C::TN; ++j) {  // run-time j: one copy of the epilogue
+      __syncthreads();  // sA free: the k loop, or the previous pass, is done with it
+#pragma unroll
+      for (int jj = 0; jj < C::TN; ++jj)  // column j of acc: one branch per column, acc stays in registers
+        if (jj == j) {
+#pragma unroll
+          for (int g = 0; g < C::TM / 4; ++g)
+            *reinterpret_cast<float4 *>(&sA[ty * C::BM + g * C::TX * 4 + tx * 4]) =
+                make_float4(acc[4 * g][jj], acc[4 * g + 1][jj], acc[4 * g + 2][jj], acc[4 * g + 3][jj]);
+        }
+      __syncthreads();
+#pragma unroll 1
+      for (int q = 0; q < C::TM; ++q) {
+        const int el = q * C::NT + threadIdx.x, r = el % C::BM, c = el / C::BM;
+        const int gi = m0 + r, gj = n0 + (j / 4) * C::TY * 4 + c * 4 + (j & 3);
+        if (gi < m && gj < n) epi_store(e, st, gi, gj, sA[c * C::BM + r]);
       }
     }
   }

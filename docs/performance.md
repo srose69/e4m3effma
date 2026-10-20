@@ -65,3 +65,13 @@ Full tables: [benches/1080.md](../benches/1080.md).
   faster with FP32 parameters and state, and 2.44–2.69× faster with BF16 parameters and state — torch's
   fused kernel barely gains from BF16 (9.0 vs 9.3 ms), this one halves the time. With many tensors torch
   batches launches while e4m3effma launches one kernel per parameter, and it is still ahead.
+
+## Other GPUs
+
+- **RTX 3090** (sm_86, community run; [benches/rtx-3090.md](../benches/rtx-3090.md)): the
+  bandwidth-bound kernels carry over — GEMV batch 1 at 799 GB/s, 85 % of the 936 GB/s DRAM peak and
+  3.7× cuBLAS SGEMV; AdamW with BF16 state at 87 %. GEMM does not: 1.10× cuBLAS SGEMM in the TN layout
+  but 0.89× its faster NN layout, at about 50 % of the FP32 peak. These are the Pascal-tuned FP32-FFMA
+  kernels with no sm_86 tuning entry; Ampere's FP32 peak counts its second FP32 datapath, which the
+  kernels' LDS-heavy inner loop probably does not keep fed (not profiled), and the Tensor Core path
+  (roadmap) is where the remaining speed is.

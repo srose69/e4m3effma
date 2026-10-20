@@ -6,7 +6,7 @@
 
 ![CUDA](https://img.shields.io/badge/CUDA-12.0%2B-76B900?logo=nvidia)
 ![Targets](https://img.shields.io/badge/targets-sm__50%E2%80%93sm__87-blue)
-![Tested](https://img.shields.io/badge/tested%20on-GTX%201080%20(sm__61)-orange)
+![Tested](https://img.shields.io/badge/tested%20on-GTX%201080%20%2B%20RTX%203090%20(community)-orange)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.1%2B-EE4C2C?logo=pytorch)
 ![API](https://img.shields.io/badge/API-C%20%2F%20cuBLASLt--style-lightgrey)
 ![License](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20linking%20exception-blue)
@@ -20,11 +20,13 @@ semantics to the GPUs most people still have — Maxwell, Pascal, Volta, Turing,
 accumulation is FP32, and outputs come out in BF16 / FP16 / FP32 / E4M3.
 
 > [!IMPORTANT]
-> **Only tested on a GTX 1080.** The author has no GPU newer than Pascal. The library compiles for
-> every architecture from sm_50 to sm_87, but it runs the same FP32-FFMA kernels everywhere: it does
-> **not** use Tensor Cores, `cp.async`, `ldmatrix`, or any other Volta/Turing/Ampere-specific feature,
-> although it could and should on those GPUs. Contributions are very welcome — and so is hardware,
-> which is honestly the better way to get those kernels written :)  See [Contributing](#contributing).
+> **Tested and tuned by the author on a GTX 1080 only.** The author has no GPU newer than Pascal;
+> everything else is up to the community, or to time. So far an RTX 3090 (sm_86, CUDA 13.3) has
+> passed the full test suite in a community run, untuned. The library compiles for every
+> architecture from sm_50 to sm_87, but it runs the same FP32-FFMA kernels everywhere: it does **not**
+> use Tensor Cores, `cp.async`, `ldmatrix`, or any other Volta/Turing/Ampere-specific feature, although
+> it could and should on those GPUs. Contributions are very welcome — and so is hardware, which is
+> honestly the better way to get those kernels written :)  See [Contributing](#contributing).
 
 ## Performance at a glance
 
@@ -47,7 +49,8 @@ slightly lower boost clock, the mixed one does not. On Pascal an exact FP8 MAC c
 compute-bound GEMM tops out at SGEMM speed while reading 4× fewer bytes; bandwidth-bound kernels
 (decoding, optimizer) get the full benefit of the smaller weights. CUTLASS has not been measured.
 
-Results by GPU: [benches/table.md](benches/table.md) (full GTX 1080 run: [benches/1080.md](benches/1080.md));
+Results by GPU: [benches/table.md](benches/table.md) (full GTX 1080 run: [benches/1080.md](benches/1080.md);
+RTX 3090, community: [benches/rtx-3090.md](benches/rtx-3090.md));
 methodology and how to add your GPU: [docs/performance.md](docs/performance.md).
 
 ## Features
@@ -74,10 +77,10 @@ methodology and how to add your GPU: [docs/performance.md](docs/performance.md).
 
 | Architecture | Compute capability | Status |
 |---|---|---|
-| Pascal (GTX 10xx, Tesla P4/P40/P100) | sm_60, sm_61, sm_62 | ✅ tested (GTX 1080, sm_61) |
+| Pascal (GTX 10xx, Tesla P4/P40/P100) | sm_60, sm_61, sm_62 | ✅ tested and tuned by the author (GTX 1080, sm_61) |
 | Maxwell | sm_50, sm_52, sm_53 | ⚙️ compiles, untested |
 | Volta / Turing | sm_70, sm_72, sm_75 | ⚙️ compiles, untested, no Tensor Core path yet |
-| Ampere / Orin | sm_80, sm_86, sm_87 | ⚙️ compiles, untested, no Tensor Core / `cp.async` path yet |
+| Ampere / Orin | sm_80, sm_86, sm_87 | ✅ tests pass on RTX 3090 (sm_86, community); untuned, no Tensor Core / `cp.async` path yet |
 | Ada, Hopper, Blackwell | sm_89+ | ❌ excluded on purpose — native FP8, use cuBLASLt / TE / `torch._scaled_mm` |
 
 ## Installation
