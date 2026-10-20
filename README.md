@@ -19,6 +19,9 @@ semantics to the GPUs most people still have — Maxwell, Pascal, Volta, Turing,
 (sm_50 … sm_87). Weights and activations stay in E4M3 (4× smaller than FP32), products are exact,
 accumulation is FP32, and outputs come out in BF16 / FP16 / FP32 / E4M3.
 
+For E5M2 (and E5M2 × E4M3, the backward of TE's HYBRID format), see the sibling library
+[E5M2EffMA](https://github.com/srose69/e5m2effma); the two share their kernels and can be used together.
+
 > [!IMPORTANT]
 > **Tested and tuned by the author on a GTX 1080 only.** The author has no GPU newer than Pascal;
 > everything else is up to the community, or to time. So far an RTX 3090 (sm_86, CUDA 13.3) has

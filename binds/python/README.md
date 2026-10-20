@@ -94,7 +94,7 @@ override altogether, and `e4m3effma.torch_ops_enabled()` tells whether it is act
 and element-wise arithmetic on raw `float8_e4m3fn` tensors are not implemented by PyTorch on any GPU;
 use `e4m3effma.matmul` / `linear` / `cast`, or `Float8Tensor`.
 
-The override is shared with the sibling package `e5m2effma`
+The override is shared with the sibling package [`e5m2effma`](https://github.com/srose69/e5m2effma)
 (E5M2 and mixed E5M2 × E4M3): whichever is imported first registers one `aten::_scaled_mm` kernel, and
 each package adds a handler to it; a call goes to the first handler that covers it. Both packages can
 be imported in any order.
