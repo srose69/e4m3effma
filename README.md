@@ -148,6 +148,52 @@ if (st != EFFMA_OK) fprintf(stderr, "%s\n", effma_last_error());   // e.g. "k = 
 
 Full API, constraints and more examples: [docs/c-api.md](docs/c-api.md).
 
+**Together with E5M2EffMA**
+
+[E5M2EffMA](https://github.com/srose69/e5m2effma) adds E5M2 and mixed E5M2 × E4M3 (the backward pass of
+TE's HYBRID recipe). The two have separate names everywhere — C prefixes `effma_` / `e5ma_`, Python
+packages `e4m3effma` / `e5m2effma` — so they link into one binary and import into one process, and
+`torch._scaled_mm` routes each call to the package that covers it. A typical split: the E4M3 forward
+pass on this library, the gradients on E5M2EffMA:
+
+```python
+import torch
+import e4m3effma as e4, e5m2effma as e5      # import order does not matter
+
+w  = (torch.randn(4096, 4096, device="cuda") * 16).to(torch.e4m3effma)   # E4M3 weight [out, in]
+sw = torch.tensor([1 / 16], device="cuda")                               # its scale_inv
+x  = torch.randn(32, 4096, device="cuda").to(torch.e4m3effma)            # E4M3 activations
+dy = torch.randn(32, 4096, device="cuda").to(torch.e5m2effma)            # E5M2 gradient of y
+
+y  = e4.linear(x, w, scale_w=sw)                        # forward: E4M3 x E4M3        (E4M3EffMA)
+dx = e5.matmul(dy, w, scale_b=sw)                       # dgrad:   E5M2 x E4M3        (E5M2EffMA)
+dw = e5.matmul(dy.t(), x, out_dtype=torch.float32)      # wgrad:   E5M2 x E4M3 -> FP32
+
+one = torch.tensor(1.0, device="cuda")                  # torch._scaled_mm: one override for both;
+y  = torch._scaled_mm(x, w.t(), one, sw[0], out_dtype=torch.bfloat16)       # E4M3 x E4M3 -> e4m3effma
+dx = torch._scaled_mm(dy, w.t().contiguous().t(), one, sw[0],               # E5M2 x E4M3 -> e5m2effma
+                      out_dtype=torch.bfloat16)
+```
+
+```c
+#include "e4m3effma.h"   /* effma_*, EFFMA_* */
+#include "e5m2effma.h"   /* e5ma_*,  E5MA_*  */
+
+// forward on E4M3EffMA: Y [out, batch] = W (E4M3, [out, in]) · X (E4M3, [in, batch])
+effma_tensor W = {d_w, EFFMA_E4M3, d_w_sinv, NULL, NULL}, X = {d_x, EFFMA_E4M3, d_x_sinv, NULL, NULL};
+effma_tensor Y = {d_y, EFFMA_BF16, NULL, NULL, NULL};
+effma_gemm(EFFMA_OP_T, EFFMA_OP_N, out, batch, in, 1.0f, &W, in, &X, in, 0.0f, NULL, 0, &Y, out, NULL, stream);
+
+// dgrad on E5M2EffMA: dX [in, batch] = Wᵀ (same E4M3 buffer) · dY (E5M2, [out, batch])
+e5ma_tensor W5 = {d_w, E5MA_E4M3, d_w_sinv, NULL, NULL}, dY = {d_dy, E5MA_E5M2, d_dy_sinv, NULL, NULL};
+e5ma_tensor dX = {d_dx, E5MA_BF16, NULL, NULL, NULL};
+e5ma_gemm(E5MA_OP_N, E5MA_OP_N, in, batch, out, 1.0f, &W5, in, &dY, out, 0.0f, NULL, 0, &dX, in, NULL, stream);
+```
+
+```sh
+cc app.c $(pkg-config --cflags --libs e4m3effma e5m2effma)    # both static libraries in one binary
+```
+
 ## Documentation
 
 | | |
